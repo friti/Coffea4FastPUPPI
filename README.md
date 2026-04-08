@@ -23,16 +23,21 @@ It includes
 -  PUPPI collection is the same as PF candidates (useful for PUPPI studies)
 -  New sums and ratios are saved in the ntuples for a dR of 0.2
 
+# Notebooks
+## MET computation
+
+- The notebook `Reproduce_MET.ipynb` includes code to check that the MET and PUPPI computations on top of fastPUPPI ntuples is correct and it works.
+- The notebook `MET_pipeline.ipynb` runs on fastPUPPI ntuples and computes the new PUPPi collection with new targets, compares it with the original PUPPI collection, and computes the MET for both.
+
+## Jet validation
+
+- The notebook `reclusteringSCJets.ipynb` includes code to perform a reclustering to produce seeded-cone jets starting from two different collections
+
 # CoffeaForFastPUPPI
 ## Run coffea on the ntuples
 Last update: 2026 April 7th
 - The coffea framework will read the FastPUPPI ntuples and make cuts & plot stuff.
 - Plan is to update cut & histogramming configs to streamline a bit better, but here's a working version.
-
-### Set up environment
-```
-
-```
 
 ### Workflow
 
@@ -49,15 +54,6 @@ Last update: 2026 April 7th
 
 5. Plotting & cutflow related scripts can be found in `plotting` repo. (TO-DO: Add example of these codes)
 
-# Notebooks
-## MET computation
-
-- The notebook `Reproduce_MET.ipynb` includes code to check that the MET and PUPPI computations on top of fastPUPPI ntuples is correct and it works.
-- The notebook `MET_pipeline.ipynb` runs on fastPUPPI ntuples and computes the new PUPPi collection with new targets, compares it with the original PUPPI collection, and computes the MET for both.
-
-## Jet validation
-
-- The notebook `reclusteringSCJets.ipynb` includes code to perform a reclustering to produce seeded-cone jets starting from two different collections
 
 # Training
 ## (Preliminary) GNN training for regression
