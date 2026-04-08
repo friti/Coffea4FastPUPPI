@@ -1,29 +1,43 @@
+from asyncio import events
+
 import awkward as ak
 import numpy as np
 
 from cut_config.cut_config_tkele import add_best_lead_sub
-from cut_config import ETA_RANGES, cut_range
 from cut_config import ETA_RANGES, cut_range, apply_evt_mask
 
 # ============================================================
-# USER CONFIG (only edit here)
+# USER CONFIG (only edit here & the bottom part of cutflow)
 # ============================================================
 
 MODE = "tkele_bkg"
 ETA_REGION = "barrel"
-PT_MIN = 1.0
+PT_MIN = 4.0
 
 PAIR_DVZ_MAX = 1.0
 PAIR_MAX_RELPFISO = 1     # None to disable
-PAIR_MAX_RELPUISO = 0.5    # None to disable
+PAIR_MAX_RELPUISO = 0.5   # None to disable
 
 BESTPAIR_SCORE = "min_dvz"  # "pt" / "min_dvz" / "min_iso_pf"
 BESTPAIR_PTMIN = 10.0       # None to disable
 
+# isolation studies
+DR_MAX_ISO = 0.3
+SELF_VETO_DEFAULT = 0.02
+SELF_VETO_LOOSER  = 0.05
+OTHER_ELE_VETO_DR = 0.02
+DZ_MAX_CHARGED    = 0.5
 
 # ============================================================
 # Helpers
 # ============================================================
+
+def _delta_phi(phi1, phi2):
+    dphi = phi1 - phi2
+    return (dphi + np.pi) % (2 * np.pi) - np.pi
+
+def _get_z(obj):
+    return getattr(obj, "vz")
 
 def add_rel_iso(coll):
     if coll is None or (not hasattr(coll, "pt")):
@@ -39,18 +53,208 @@ def add_rel_iso(coll):
 
     return coll
 
+
+def add_custom_cand_iso(events, ele, *,
+                        cand_key,
+                        dr_max=0.3,
+                        # self-veto behavior
+                        self_veto_dr=0.02,
+                        self_veto_all=False,      # False => charged-only self-veto (original)
+                        # partner-veto behavior
+                        ele_other=None,
+                        dr_partner_veto=0.02,
+                        # dz behavior
+                        dz_max=None,              # None disables charged dz cut
+                        iso_name="customIso",
+                        pt_field="pt",
+                        use_ptcorr=True):
+    """
+    Generic candidate isolation:
+      - sums cand pt for dR < dr_max
+      - self-veto:
+          * if self_veto_all: veto ALL candidates with dR < self_veto_dr
+          * else: veto only CHARGED candidates with dR < self_veto_dr
+      - optional partner veto: require dR(other,cand) > dr_partner_veto
+      - optional charged dz cut: abs(z(cand)-z(ele)) < dz_max for charged cands
+      - divides by ptCorr if present (and use_ptcorr) else pt
+    """
+    if ele is None:
+        return None
+    if not hasattr(events, cand_key):
+        return ele
+    if not (hasattr(ele, "eta") and hasattr(ele, "phi")):
+        return ele
+
+    denom = ele.ptCorr if (use_ptcorr and hasattr(ele, "ptCorr")) else (ele.pt if hasattr(ele, "pt") else None)
+    if denom is None:
+        return ele
+
+    # mask candidates to same events as ele
+    evt_mask = ak.num(ele, axis=1) >= 0
+    cands = getattr(events, cand_key)[evt_mask]
+
+    # [evt][ele][cand]
+    ele_cand = ak.cartesian({"ele": ele, "cand": cands}, axis=1, nested=True)
+
+    mask_neutral_ele = ele_cand.ele.charge == 0
+    mask_neutral_pf = ele_cand.cand.charge == 0
+
+    d_eta = ele_cand.ele.eta - ele_cand.cand.eta
+    d_phi = _delta_phi(ele_cand.ele.phi, ele_cand.cand.phi)
+    d_r = np.sqrt(d_eta * d_eta + d_phi * d_phi)
+
+    keep = (d_r < dr_max)
+
+    # self-veto
+    if self_veto_all:
+        keep = keep & ~(d_r < self_veto_dr)
+    else:
+        if hasattr(ele_cand.cand, "charge"):
+            is_charged = (np.abs(ele_cand.cand.charge) > 0.5)
+            keep = keep & ~((d_r < self_veto_dr) & is_charged)
+
+    # partner-electron veto
+    if ele_other is not None:
+        eleO = ele_other[evt_mask]
+        eleO_cand = ak.cartesian({"eleO": eleO, "cand": cands}, axis=1, nested=True)
+        d_eta_O = eleO_cand.eleO.eta - eleO_cand.cand.eta
+        d_phi_O = _delta_phi(eleO_cand.eleO.phi, eleO_cand.cand.phi)
+        d_r_O = np.sqrt(d_eta_O * d_eta_O + d_phi_O * d_phi_O)
+        keep = keep & (d_r_O > dr_partner_veto)
+
+    # charged dz cut (z0 or vz)
+    if (dz_max is not None) and hasattr(ele_cand.cand, "charge"):
+        ele_z  = _get_z(ele_cand.ele)
+        cand_z = _get_z(ele_cand.cand)
+        if (ele_z is not None) and (cand_z is not None):
+            is_charged = (np.abs(ele_cand.cand.charge) > 0.5)
+            dz_ok = (np.abs(cand_z - ele_z) < dz_max)
+            keep = keep & ((~is_charged) | dz_ok)
+
+    cand_pt = getattr(ele_cand.cand, pt_field)
+    pt_sum = ak.sum(ak.where(keep, cand_pt, 0.0), axis=2)
+
+    denom_safe = ak.where(denom > 0, denom, 1.0)
+    rel_iso = pt_sum / denom_safe
+
+    return ak.with_field(ele, rel_iso, iso_name)
+
+
+def add_all_custom_pfiso_versions(events, ele, dr_max=0.3):
+    """
+    Adds PF iso versions that do NOT require a partner electron:
+      [1] customPfIso
+      [2] customPfIso_looserSelfVeto
+      [4] customPfIso_dz
+    """
+    if ele is None:
+        return None
+    if not hasattr(events, "L1PFCands"):
+        return ele
+
+    ele = add_custom_cand_iso(
+        events, ele,
+        cand_key="L1PFCands",
+        dr_max=dr_max,
+        self_veto_dr=SELF_VETO_DEFAULT,
+        self_veto_all=False,
+        dz_max=None,
+        ele_other=None,
+        iso_name="customPfIso",
+    )
+
+    ele = add_custom_cand_iso(
+        events, ele,
+        cand_key="L1PFCands",
+        dr_max=dr_max,
+        self_veto_dr=SELF_VETO_LOOSER,
+        self_veto_all=True,    # include neutrals in self-veto
+        dz_max=None,
+        ele_other=None,
+        iso_name="customPfIso_looserSelfVeto",
+    )
+
+    ele = add_custom_cand_iso(
+        events, ele,
+        cand_key="L1PFCands",
+        dr_max=dr_max,
+        self_veto_dr=SELF_VETO_LOOSER,
+        self_veto_all=True,
+        dz_max=DZ_MAX_CHARGED,
+        ele_other=None,
+        iso_name="customPfIso_dz",
+    )
+
+    return ele
+
+
+def add_custom_puppi_iso(events, ele, dr_max=0.3):
+    return add_custom_cand_iso(
+        events, ele,
+        cand_key="L1PuppiCands",
+        dr_max=dr_max,
+        self_veto_dr=SELF_VETO_DEFAULT,
+        self_veto_all=False,
+        dz_max=None,
+        ele_other=None,
+        iso_name="customPuppiIso",
+    )
+
+
+def add_pfiso_otherEleVeto_to_pair_legs(events, pairs, dr_max=0.3):
+    """
+    Computes [3] customPfIso_otherEleVeto on pair legs using the other leg as partner.
+    Also adds pair-level max_customPfIso_otherEleVeto.
+    """
+    if pairs is None or (not hasattr(pairs, "l1")) or (not hasattr(pairs, "l2")):
+        return pairs
+    if not hasattr(events, "L1PFCands"):
+        return pairs
+
+    l1 = pairs.l1
+    l2 = pairs.l2
+
+    l1 = add_custom_cand_iso(
+        events, l1,
+        cand_key="L1PFCands",
+        dr_max=dr_max,
+        self_veto_dr=SELF_VETO_DEFAULT,
+        self_veto_all=False,
+        ele_other=l2,
+        dr_partner_veto=OTHER_ELE_VETO_DR,
+        dz_max=None,
+        iso_name="customPfIso_otherEleVeto",
+    )
+    l2 = add_custom_cand_iso(
+        events, l2,
+        cand_key="L1PFCands",
+        dr_max=dr_max,
+        self_veto_dr=SELF_VETO_DEFAULT,
+        self_veto_all=False,
+        ele_other=l1,
+        dr_partner_veto=OTHER_ELE_VETO_DR,
+        dz_max=None,
+        iso_name="customPfIso_otherEleVeto",
+    )
+
+    pairs = ak.with_field(pairs, l1, "l1")
+    pairs = ak.with_field(pairs, l2, "l2")
+
+    pairs = ak.with_field(
+        pairs,
+        np.maximum(pairs.l1.customPfIso_otherEleVeto, pairs.l2.customPfIso_otherEleVeto),
+        "max_customPfIso_otherEleVeto"
+    )
+    return pairs
+
+# get around weird awkward issue boh
 def _as_jagged01(per_event_option):
-    # [evt] option-record -> [evt][0/1] (never None)
     return ak.fill_none(ak.singletons(per_event_option), [])
 
 
 def pick_best_pair(pair_coll, score="min_dvz"):
-    """
-    Returns [evt] option-record best pair.
-    """
     if pair_coll is None:
         return None
-
     if score == "pt":
         idx = ak.argmax(pair_coll.pt, axis=1, keepdims=True)
     elif score == "min_dvz":
@@ -59,17 +263,15 @@ def pick_best_pair(pair_coll, score="min_dvz"):
         idx = ak.argmin(pair_coll.max_relPfIso, axis=1, keepdims=True)
     else:
         raise ValueError(score)
-
-    best = pair_coll[idx]      # [evt,1] (empty where no pairs)
-    return ak.firsts(best)     # [evt] option-record
+    return ak.firsts(pair_coll[idx])
 
 
 def cut_pick_best_pair(events, obj, pair_key="tkelePair", out_key="best_tkelePair", score="min_dvz"):
     out = dict(obj)
     if pair_key not in out:
         return out
-    best_opt = pick_best_pair(out[pair_key], score=score)  # [evt] option-record
-    out[out_key] = _as_jagged01(best_opt)                  # [evt][0/1]
+    best_opt = pick_best_pair(out[pair_key], score=score)
+    out[out_key] = _as_jagged01(best_opt)
     return out
 
 
@@ -79,35 +281,34 @@ def cut_pick_best_pair(events, obj, pair_key="tkelePair", out_key="best_tkelePai
 
 def build_objects(events):
     obj = {}
-
     if not hasattr(events, "TkEleL2"):
         return obj
 
     tkele = events.TkEleL2
 
-    # Normalize pt to ptCorr
-    if hasattr(tkele, "ptCorr"):
+    if hasattr(tkele, "ptCorr"): # piero regression
         tkele = ak.with_field(tkele, tkele.ptCorr, "pt")
 
-    # ADD HERE
     tkele = add_rel_iso(tkele)
 
-    obj["tkele"] = tkele
-    return obj
+    tkele = add_all_custom_pfiso_versions(events, tkele, dr_max=DR_MAX_ISO)
 
-def _delta_phi(phi1, phi2):
-    dphi = phi1 - phi2
-    return (dphi + np.pi) % (2 * np.pi) - np.pi
+    #tkele = add_custom_puppi_iso(events, tkele, dr_max=DR_MAX_ISO)
+    tkele = add_all_custom_puppi_iso_versions(events, tkele, dr_max=DR_MAX_ISO)
+
+    obj["tkele"] = tkele
+
+    if hasattr(events, "L1PFCands"):
+        obj["L1PFCands"] = events.L1PFCands
+
+    return obj
 
 
 # ============================================================
 # Pair building helpers
 # ============================================================
+
 def build_pairs_from_electrons(ele):
-    """
-    Generic: build ee pairs from an electron-like collection (pt,eta,phi,(vz optional)).
-    Output has: l1,l2 and pair vars pt,eta,phi,vz,mass,delta_*.
-    """
     pairs = ak.combinations(ele, 2, fields=["l1", "l2"])
     l1, l2 = pairs.l1, pairs.l2
 
@@ -117,7 +318,6 @@ def build_pairs_from_electrons(ele):
     d_eta = eta1 - eta2
     d_phi = _delta_phi(phi1, phi2)
 
-    # massless approx
     m2 = 2.0 * pt1 * pt2 * (np.cosh(d_eta) - np.cos(d_phi))
     m2 = ak.where(m2 < 0, 0, m2)
     mass = np.sqrt(m2)
@@ -150,7 +350,6 @@ def build_pairs_from_electrons(ele):
     pairs = ak.with_field(pairs, abs(d_vz), "delta_vz")
     pairs = ak.with_field(pairs, abs(d_pt), "delta_pt")
 
-    # normalized variables
     eps = 1e-12
     pt_safe  = ak.where(pt == 0, eps, pt)
     eta_safe = ak.where(eta == 0, eps, abs(eta))
@@ -160,36 +359,40 @@ def build_pairs_from_electrons(ele):
     pairs = ak.with_field(pairs, abs(d_eta) / eta_safe, "delta_eta_over_eta")
     pairs = ak.with_field(pairs, abs(d_phi) / phi_safe, "delta_phi_over_phi")
 
-    # pt/m
     pt_over_mass = ak.where(mass > 0, pt / mass, 0.0)
     pairs = ak.with_field(pairs, pt_over_mass, "pt_over_mass")
 
-    # charge product (only if charge exists)
     if hasattr(l1, "charge") and hasattr(l2, "charge"):
-        charge_prod = l1.charge * l2.charge
-        pairs = ak.with_field(pairs, charge_prod, "charge_prod")
+        pairs = ak.with_field(pairs, l1.charge * l2.charge, "charge_prod")
 
-    # eta product
-    eta_prod = l1.eta * l2.eta
-    pairs = ak.with_field(pairs, eta_prod, "eta_prod")
+    pairs = ak.with_field(pairs, l1.eta * l2.eta, "eta_prod")
 
-    # --- max relIso per pair ---
     if hasattr(l1, "relPfIso") and hasattr(l2, "relPfIso"):
         pairs = ak.with_field(pairs, np.maximum(l1.relPfIso, l2.relPfIso), "max_relPfIso")
-
     if hasattr(l1, "relPuppiIso") and hasattr(l2, "relPuppiIso"):
         pairs = ak.with_field(pairs, np.maximum(l1.relPuppiIso, l2.relPuppiIso), "max_relPuppiIso")
 
-    d_r = np.sqrt(d_eta*d_eta + d_phi*d_phi)
+    d_r = np.sqrt(d_eta * d_eta + d_phi * d_phi)
     pairs = ak.with_field(pairs, d_r, "delta_r")
 
+    if hasattr(l1, "customPfIso") and hasattr(l2, "customPfIso"):
+        pairs = ak.with_field(pairs, np.maximum(l1.customPfIso, l2.customPfIso), "max_customPfIso")
+    if hasattr(l1, "customPfIso_looserSelfVeto") and hasattr(l2, "customPfIso_looserSelfVeto"):
+        pairs = ak.with_field(
+            pairs,
+            np.maximum(l1.customPfIso_looserSelfVeto, l2.customPfIso_looserSelfVeto),
+            "max_customPfIso_looserSelfVeto"
+        )
+    if hasattr(l1, "customPfIso_dz") and hasattr(l2, "customPfIso_dz"):
+        pairs = ak.with_field(pairs, np.maximum(l1.customPfIso_dz, l2.customPfIso_dz), "max_customPfIso_dz")
+
+    if hasattr(l1, "customPuppiIso") and hasattr(l2, "customPuppiIso"):
+        pairs = ak.with_field(pairs, np.maximum(l1.customPuppiIso, l2.customPuppiIso), "max_customPuppiIso")
 
     return pairs
 
+
 def build_lead_sub_from_pairs(pair_coll):
-    """
-    From pair_coll.l1/l2 → returns (lead, sub) jagged [events][pairs]
-    """
     if pair_coll is None or (not hasattr(pair_coll, "l1")) or (not hasattr(pair_coll, "l2")):
         return None, None
     l1, l2 = pair_coll.l1, pair_coll.l2
@@ -200,6 +403,97 @@ def build_lead_sub_from_pairs(pair_coll):
     sub  = ak.where(lead_mask, l2, l1)
     return lead, sub
 
+
+def add_all_custom_puppi_iso_versions(events, ele, dr_max=0.3):
+
+    if ele is None:
+        return None
+    if not hasattr(events, "L1PuppiCands"):
+        return ele
+
+    # [1] baseline
+    ele = add_custom_cand_iso(
+        events, ele,
+        cand_key="L1PuppiCands",
+        dr_max=dr_max,
+        self_veto_dr=SELF_VETO_DEFAULT,
+        self_veto_all=False,
+        dz_max=None,
+        ele_other=None,
+        iso_name="customPuppiIso",
+    )
+
+    # [2] looser self-veto
+    ele = add_custom_cand_iso(
+        events, ele,
+        cand_key="L1PuppiCands",
+        dr_max=dr_max,
+        self_veto_dr=SELF_VETO_LOOSER,
+        self_veto_all=True,
+        dz_max=None,
+        ele_other=None,
+        iso_name="customPuppiIso_looserSelfVeto",
+    )
+
+    # [3] dz cut
+    ele = add_custom_cand_iso(
+        events, ele,
+        cand_key="L1PuppiCands",
+        dr_max=dr_max,
+        self_veto_dr=SELF_VETO_LOOSER,
+        self_veto_all=True,
+        dz_max=DZ_MAX_CHARGED,
+        ele_other=None,
+        iso_name="customPuppiIso_dz",
+    )
+
+    return ele
+
+def add_puppiiso_otherEleVeto_to_pair_legs(events, pairs, dr_max=0.3):
+
+    if pairs is None or (not hasattr(pairs, "l1")):
+        return pairs
+    if not hasattr(events, "L1PuppiCands"):
+        return pairs
+
+    l1 = pairs.l1
+    l2 = pairs.l2
+
+    l1 = add_custom_cand_iso(
+        events, l1,
+        cand_key="L1PuppiCands",
+        dr_max=dr_max,
+        self_veto_dr=SELF_VETO_LOOSER,
+        self_veto_all=True,
+        ele_other=l2,
+        dr_partner_veto=OTHER_ELE_VETO_DR,
+        dz_max=DZ_MAX_CHARGED,
+        iso_name="customPuppiIso_otherEleVeto",
+    )
+
+    l2 = add_custom_cand_iso(
+        events, l2,
+        cand_key="L1PuppiCands",
+        dr_max=dr_max,
+        self_veto_dr=SELF_VETO_LOOSER,
+        self_veto_all=True,
+        ele_other=l1,
+        dr_partner_veto=OTHER_ELE_VETO_DR,
+        dz_max=DZ_MAX_CHARGED,
+        iso_name="customPuppiIso_otherEleVeto",
+    )
+
+    pairs = ak.with_field(pairs, l1, "l1")
+    pairs = ak.with_field(pairs, l2, "l2")
+
+    pairs = ak.with_field(
+        pairs,
+        np.maximum(pairs.l1.customPuppiIso_otherEleVeto,
+                   pairs.l2.customPuppiIso_otherEleVeto),
+        "max_customPuppiIso_otherEleVeto"
+    )
+
+    return pairs
 
 # ============================================================
 # CUTS
@@ -213,14 +507,20 @@ def cut_eta(events, obj):
     out = obj
     if "tkele" in out:
         out = cut_range(events, out, "tkele", "eta", vmin=eta_min, vmax=eta_max, doAbs=True)
-        out["tkele"] = add_rel_iso(out["tkele"])   # ADD
+        out["tkele"] = add_rel_iso(out["tkele"])
+        out["tkele"] = add_all_custom_pfiso_versions(events, out["tkele"], dr_max=DR_MAX_ISO)
+        #out["tkele"] = add_custom_puppi_iso(events, out["tkele"], dr_max=DR_MAX_ISO)
+        out["tkele"] = add_all_custom_puppi_iso_versions(events, out["tkele"], dr_max=DR_MAX_ISO)
     return out
 
 def cut_pt(events, obj):
     out = obj
     if "tkele" in out:
         out = cut_range(events, out, "tkele", "pt", vmin=PT_MIN, vmax=None, doAbs=False)
-        out["tkele"] = add_rel_iso(out["tkele"])   # ADD
+        out["tkele"] = add_rel_iso(out["tkele"])
+        out["tkele"] = add_all_custom_pfiso_versions(events, out["tkele"], dr_max=DR_MAX_ISO)
+        #out["tkele"] = add_custom_puppi_iso(events, out["tkele"], dr_max=DR_MAX_ISO)
+        out["tkele"] = add_all_custom_puppi_iso_versions(events, out["tkele"], dr_max=DR_MAX_ISO)
     return out
 
 def cut_build_pairs(events, obj):
@@ -228,14 +528,24 @@ def cut_build_pairs(events, obj):
     if "tkele" not in out:
         return out
 
-    out["tkelePair"] = build_pairs_from_electrons(out["tkele"])
+    # build pairs from electrons that already have [1],[2],[4] PF iso variants + customPuppiIso
+    pairs = build_pairs_from_electrons(out["tkele"])
+
+    # add [3] (partner veto) on pair legs + pair-level max_customPfIso_otherEleVeto
+    #pairs = add_pfiso_otherEleVeto_to_pair_legs(events, pairs, dr_max=DR_MAX_ISO)
+    pairs = add_pfiso_otherEleVeto_to_pair_legs(events, pairs, dr_max=DR_MAX_ISO)
+    #pairs = add_puppiiso_otherEleVeto_to_pair_legs(events, pairs, dr_max=DR_MAX_ISO)
+
+    out["tkelePair"] = pairs
+
+    # lead/sub inherit the decorated leg fields (including otherEleVeto)
     out["tkeleLead"], out["tkeleSub"] = build_lead_sub_from_pairs(out["tkelePair"])
 
-    # ADD (lead/sub are electron records too)
     out["tkeleLead"] = add_rel_iso(out["tkeleLead"])
     out["tkeleSub"]  = add_rel_iso(out["tkeleSub"])
 
     return out
+
 
 def cut_pair_os(obj, pair_key="tkelePair"):
     out = dict(obj)
@@ -315,7 +625,7 @@ def cut_bestpair_leg_pt(events, obj,
     if lead is None or sub is None:
         return out
 
-    lead1 = ak.firsts(lead)  # [evt] option-record
+    lead1 = ak.firsts(lead)
     sub1  = ak.firsts(sub)
 
     mask = (~ak.is_none(lead1)) & (~ak.is_none(sub1))
@@ -354,7 +664,6 @@ def cut_bestpair_leg_idscore(events, obj,
     return apply_evt_mask(out, mask)
 
 
-
 # ============================================================
 # CUTFLOW
 # ============================================================
@@ -365,27 +674,6 @@ CUTFLOW = [
     (f"cut2_pt_{int(PT_MIN)}", [cut_pt]),
 
     ("cut3_buildPairs",        [cut_build_pairs,
-                                lambda e,o: cut_pick_best_pair(e, o, score=BESTPAIR_SCORE)]),
-
-    ("cut4_pairOS",            [lambda e,o: cut_pair_os(o, "tkelePair"),
-                                lambda e,o: cut_pick_best_pair(e, o, score=BESTPAIR_SCORE)]),
-
-    (f"cut5_pairDVZ_{PAIR_DVZ_MAX}", [lambda e,o: cut_pair_dvz(o, "tkelePair", PAIR_DVZ_MAX),
-                                     lambda e,o: cut_pick_best_pair(e, o, score=BESTPAIR_SCORE)]),
-
-    ("cut6_pairIsoPF",           [lambda e,o: cut_pair_max_reliso(o, "tkelePair",
-                                                                 max_relPfIso=PAIR_MAX_RELPFISO),
-                                lambda e,o: cut_pick_best_pair(e, o, score=BESTPAIR_SCORE)]),
-
-    ("cut7_pairIsoPUPPI",           [lambda e,o: cut_pair_max_reliso(o, "tkelePair",
-                                                                 max_relPuppiIso=PAIR_MAX_RELPUISO),
-                                lambda e,o: cut_pick_best_pair(e, o, score=BESTPAIR_SCORE)]),
-
-
-    ("cut8_vetoNoBestPair",    [cut_veto_if_no_bestpair]),
-    ("cut8c_bestLeadSub",        [lambda e,o: add_best_lead_sub(o, best_key="best_tkelePair")]),
-
-    ("cut9_bestPairLegPt",      [lambda e,o: cut_bestpair_leg_pt(e, o, lead_pt_min=5.0, sub_pt_min=4.0)]),
-    ("cut10_bestPairLegIdScore", [lambda e,o: cut_bestpair_leg_idscore(e, o, id_min=-0.1)]),
-
+                                lambda e, o: cut_pick_best_pair(e, o, score=BESTPAIR_SCORE),
+                                lambda e, o: add_best_lead_sub(o, best_key="best_tkelePair")]),
 ]

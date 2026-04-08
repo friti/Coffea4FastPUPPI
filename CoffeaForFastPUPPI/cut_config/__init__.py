@@ -1,6 +1,6 @@
 import awkward as ak
 
-# Shared eta definitions
+# eta definitions can be used later
 ETA_RANGES = {
     "barrel": (0.0, 1.4),
     "endcap": (1.5, 2.4),
@@ -17,11 +17,10 @@ def build_objects(events):
 
     Also normalizes TkEleL2:
       - tkele.pt     := tkele.ptCorr
-      - tkele.ptRaw  := original tkele.pt  (optional)
+      - tkele.ptRaw  := original tkele.pt  (piero regression)
     """
     obj = {}
 
-    # Old PF/PUPPI world (optional)
     if hasattr(events, "L1PFCands"):
         obj["pf"] = events.L1PFCands
     if hasattr(events, "L1PuppiCands"):
@@ -29,14 +28,13 @@ def build_objects(events):
     if hasattr(events, "GenCands"):
         obj["gen"] = events.GenCands
 
-    # New file: GenEl + TkEleL2
     if hasattr(events, "GenEl"):
         obj["genel"] = events.GenEl
 
     if hasattr(events, "TkEleL2"):
         tkele = events.TkEleL2
 
-        # Normalize pt: use ptCorr as "pt" everywhere downstream
+        # Normalize pt: use ptCorr as "pt" everywhere downstream if exists (piero regression)
         if hasattr(tkele, "ptCorr"):
             # preserve raw pt too (handy)
             if hasattr(tkele, "pt"):

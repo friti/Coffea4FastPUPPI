@@ -9,14 +9,17 @@ defaults:
   delta_pt_range: [0, 200]
   delta_phi_range: [0, 3.2]
   delta_r_range: [0, 5]
+  mult_range_pfcands: [0, 500]
 
 objects:
   - tkele
   - tkeleLead
   - tkeleSub
   - tkelePair
+  - best_tkelePair
   - best_tkeleLead
   - best_tkeleSub
+  - L1PFCands
 
 plots:
   pt:
@@ -51,9 +54,67 @@ plots:
       - {type: Regular, bins: 50, range_ref: mult_range_ele, label: "multiplicity"}
 
 per_object:
+  L1PFCands:
+    objects: [L1PFCands]
+    plots:
+      eta:
+        variables: [eta]
+        axes:
+          - {type: Regular, bins: 50, range_ref: eta_range, label: "L1PFCand #eta"}
+
+      multiplicity:
+        variables: [multiplicity]
+        axes:
+          - {type: Regular, bins: 300, range_ref: mult_range_pfcands, label: "n(L1PFCands)"}
+
   tkele:
     objects: [tkele, tkeleLead, tkeleSub, best_tkeleLead, best_tkeleSub]
     plots:
+      customPuppiIso_looserSelfVeto:
+        variables: [customPuppiIso_looserSelfVeto]
+        axes:
+          - {type: Regular, bins: 100, range: [0, 5], label: "customPuppiIso (self-veto 0.05, all)"}
+
+      customPuppiIso_dz:
+        variables: [customPuppiIso_dz]
+        axes:
+          - {type: Regular, bins: 100, range: [0, 5], label: "customPuppiIso (+ charged dZ)"}
+
+      customPuppiIso_otherEleVeto:
+        variables: [customPuppiIso_otherEleVeto]
+        axes:
+          - {type: Regular, bins: 50000, range: [0, 10], label: "customPuppiIso (+ other-e veto)"}
+
+      customPuppiIso_otherEleVeto_vs_pt:
+        variables: [pt, customPuppiIso_otherEleVeto]
+        axes:
+          - {type: Regular, bins: 50, range_ref: pt_range, label: "pT"}
+          - {type: Regular, bins: 5000, range: [0, 10], label: "customPuppiIso (+ other-e veto)"}
+
+      pfIso_vs_pt:
+        variables: [pt, pfIso]
+        axes:
+          - {type: Regular, bins: 50, range_ref: pt_range, label: "pT"}
+          - {type: Regular, bins: 5000, range: [0, 10], label: "pfIso"}
+
+      puppiIso_vs_pt:
+        variables: [pt, puppiIso]
+        axes:
+          - {type: Regular, bins: 50, range_ref: pt_range, label: "pT"}
+          - {type: Regular, bins: 5000, range: [0, 2], label: "puppiIso"}
+
+      customPfIso_otherEleVeto_vs_pt:
+        variables: [pt, customPfIso_otherEleVeto]
+        axes:
+          - {type: Regular, bins: 50, range_ref: pt_range, label: "pT"}
+          - {type: Regular, bins: 5000, range: [0, 10], label: "customPfIso (+ other-e veto)"}
+
+      tkIso_vs_pt:
+        variables: [pt, tkIso]
+        axes:
+          - {type: Regular, bins: 50, range_ref: pt_range, label: "pT"}
+          - {type: Regular, bins: 5000, range: [0, 2], label: "tkIso"}
+
       idScore:
         variables: [idScore]
         axes:
@@ -64,25 +125,55 @@ per_object:
         axes:
           - {type: Regular, bins: 16, range: [0, 16], label: "hwQual"}
 
+      tkIso:
+        variables: [tkIso]
+        axes:
+          - {type: Regular, bins: 50000, range: [0, 2], label: "tkIso"}
+
+      customPuppiIso:
+        variables: [customPuppiIso]
+        axes:
+          - {type: Regular, bins: 100, range: [0, 5], label: "customPuppiIso"}
+
+      customPfIso:
+        variables: [customPfIso]
+        axes:
+          - {type: Regular, bins: 100, range: [0, 5], label: "customPfIso"}
+
+      customPfIso_looserSelfVeto:
+        variables: [customPfIso_looserSelfVeto]
+        axes:
+          - {type: Regular, bins: 100, range: [0, 5], label: "customPfIso (self-veto 0.05, all)"}
+
+      customPfIso_dz:
+        variables: [customPfIso_dz]
+        axes:
+          - {type: Regular, bins: 100, range: [0, 5], label: "customPfIso (+ charged dZ)"}
+
+      customPfIso_otherEleVeto:
+        variables: [customPfIso_otherEleVeto]
+        axes:
+          - {type: Regular, bins: 50000, range: [0, 10], label: "customPfIso (+ other-e veto)"}
+
       pfIso:
         variables: [pfIso]
         axes:
-          - {type: Regular, bins: 50, range: [0, 5], label: "pfIso"}
+          - {type: Regular, bins: 50000, range: [0, 10], label: "pfIso"}
 
       puppiIso:
         variables: [puppiIso]
         axes:
-          - {type: Regular, bins: 50, range: [0, 5], label: "puppiIso"}
-      
+          - {type: Regular, bins: 50000, range: [0, 2], label: "puppiIso"}
+
       relPfIso:
         variables: [relPfIso]
         axes:
-          - {type: Regular, bins: 50, range: [0, 5], label: "pfIso / pT"}
+          - {type: Regular, bins: 100, range: [0, 5], label: "pfIso / pT"}
 
       relPuppiIso:
         variables: [relPuppiIso]
         axes:
-          - {type: Regular, bins: 50, range: [0, 5], label: "puppiIso / pT"}
+          - {type: Regular, bins: 100, range: [0, 5], label: "puppiIso / pT"}
 
   tkelePair:
     objects: [tkelePair, best_tkelePair]
@@ -91,8 +182,8 @@ per_object:
         variables: [pt]
         logy: true
         axes:
-        - {type: Regular, bins: 50, range_ref: pt_range, label: "pT"}
-      
+          - {type: Regular, bins: 50, range_ref: pt_range, label: "pT"}
+
       mass:
         variables: [mass]
         axes:
@@ -148,15 +239,35 @@ per_object:
         axes:
           - {type: Regular, bins: 50, range: [-5, 5], label: "eta1*eta2"}
 
+      max_customPfIso:
+        variables: [max_customPfIso]
+        axes:
+          - {type: Regular, bins: 100, range: [0, 5], label: "max(customPfIso)"}
+
+      max_customPfIso_looserSelfVeto:
+        variables: [max_customPfIso_looserSelfVeto]
+        axes:
+          - {type: Regular, bins: 100, range: [0, 5], label: "max(customPfIso looser self-veto)"}
+
+      max_customPfIso_dz:
+        variables: [max_customPfIso_dz]
+        axes:
+          - {type: Regular, bins: 100, range: [0, 5], label: "max(customPfIso + charged dZ)"}
+
+      max_customPuppiIso:
+        variables: [max_customPuppiIso]
+        axes:
+          - {type: Regular, bins: 100, range: [0, 5], label: "max(customPuppiIso)"}
+
       max_relPfIso:
         variables: [max_relPfIso]
         axes:
-          - {type: Regular, bins: 50, range: [0, 5], label: "max(PF relIso)"}
+          - {type: Regular, bins: 100, range: [0, 5], label: "max(PF relIso)"}
 
       max_relPuppiIso:
         variables: [max_relPuppiIso]
         axes:
-          - {type: Regular, bins: 50, range: [0, 5], label: "max(PUPPI relIso)"}
+          - {type: Regular, bins: 100, range: [0, 5], label: "max(PUPPI relIso)"}
 
       delta_r:
         variables: [delta_r]
