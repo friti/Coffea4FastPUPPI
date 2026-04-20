@@ -79,6 +79,7 @@ Preliminary training on GNN (EdgeConv, GravNet) can be found in the `Training` r
     python3 prepare_dataset_batches.py --input perfNano_TTbar_PU200.root --output_dir ./graphs --graphs_per_file 20000
     ```
     - To add more inputs, change this script (once the branches are available on the ntuples)
+    - Some pre-processed inputs (1000 neutral cones per pt file) can be found here: `/eos/cms/store/group/cmst3/group/l1tr/kypark/puppi_training_neutral_dr0p3/`
 
 3. Run training
     ```
