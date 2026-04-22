@@ -21,6 +21,7 @@ def main():
                         help="Python module path, e.g. cut_config.cut_config")
 
     parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--maxFile", type=int, default=-1)
 
     args = parser.parse_args()
 
@@ -42,6 +43,9 @@ def main():
         raise RuntimeError(f"No ROOT files found: rootDir={args.rootDir}, pattern={args.filePattern}")
 
     fileset = {"files": {"files": file_list}}
+    
+    if args.maxFile != -1:    
+        fileset = {"files": {"files": file_list[:args.maxFile]}}
 
     print(f"Input: {args.rootDir} ({len(file_list)} files), treename={args.treename}")
     print(f"Stages: {[name for name, _ in cutflow_module.CUTFLOW]}")

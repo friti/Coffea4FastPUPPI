@@ -1,15 +1,46 @@
 defaults:
   pt_edges: [0, 5, 10, 15, 20, 30, 40, 60, 80, 100, 150, 200]
+  pt_zoom_edges: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+
   eta_range: [-5, 5]
   phi_range: [-3.5, 3.5]
-  mass_range: [0, 2]
+
   puppi_range: [0, 1.1]
-  dxy_range: [0, 1]
-  z0_range: [-10, 10]
+  nnvtx_range: [-1.0, 1.0]     # adjust if your branch is [0,1]
+  ratio_range: [0, 3.0]
+
   mult_range: [0, 500]
+  cone_mult_range: [0, 10]
 
-objects: [pf, puppi, gen, matched_pf, nonMatched_pf, matched_puppi, nonMatched_puppi, matched_gen, nonMatched_gen]
+# ------------------------------------------------------------
+# Objects your processor can see at stages
+# ------------------------------------------------------------
+objects:
+  # base
+  - gen
+  - pf
+  - puppi
 
+  # cone collections produced by cut5_cones
+  - pf_neu
+  - pf_chg
+  - puppi_neu
+  - puppi_chg
+
+  # matched/nonMatched splits produced by cut6_splitMatched
+  - matched_pf_neu
+  - nonMatched_pf_neu
+  - matched_pf_chg
+  - nonMatched_pf_chg
+
+  - matched_puppi_neu
+  - nonMatched_puppi_neu
+  - matched_puppi_chg
+  - nonMatched_puppi_chg
+
+# ------------------------------------------------------------
+# Global “default” plots available for any object unless overridden
+# ------------------------------------------------------------
 plots:
   pt:
     variables: [pt]
@@ -27,106 +58,449 @@ plots:
     axes:
       - {type: Regular, bins: 50, range_ref: phi_range, label: "phi"}
 
-  mass:
-    variables: [mass]
-    axes:
-      - {type: Regular, bins: 100, range_ref: mass_range, label: "mass"}
-
   charge:
     variables: [charge]
     axes:
       - {type: Regular, bins: 3, range: [-1, 2], label: "charge"}
-
-  pdgId:
-    variables: [pdgId]
-    axes:
-      - {type: Regular, bins: 250, range: [0, 250], label: "pdgId"}
 
   multiplicity:
     variables: [multiplicity]
     axes:
       - {type: Regular, bins: 500, range_ref: mult_range, label: "multiplicity"}
 
+# ------------------------------------------------------------
+# Per-object plot blocks
+# ------------------------------------------------------------
 per_object:
+
+  # ---------------- GEN ----------------
+  gen:
+    objects: [gen]
+    plots:
+      pdgId:
+        variables: [pdgId]
+        axes:
+          - {type: Regular, bins: 250, range: [0, 250], label: "pdgId"}
+
+      status:
+        variables: [status]
+        axes:
+          - {type: Regular, bins: 5, range: [0, 5], label: "status"}
+
+  # ---------------- PF / PUPPI single-cand QA ----------------
   pf:
-    objects: [pf, matched_pf]
+    objects: [pf]
     plots:
       puppiWeight:
         variables: [puppiWeight]
         axes:
           - {type: Regular, bins: 50, range_ref: puppi_range, label: "puppiWeight"}
-      
-      dxy:
-        variables: [dxy]
-        axes:
-          - {type: Regular, bins: 500, range_ref: dxy_range, label: "dxy"}
 
-      z0:
-        variables: [z0]
+      # only if exists; otherwise auto-skipped
+      nnVtxScore:
+        variables: [nnVtxScore]
         axes:
-          - {type: Regular, bins: 100, range_ref: z0_range, label: "z0"}
-
-      hwTkQuality:
-        variables: [hwTkQuality]
-        axes:
-          - {type: Regular, bins: 21, range: [0, 20], label: "hwTkQuality"}
-
-      puppiWeight_vs_pt:
-        variables: [puppiWeight, pt]
-        axes:
-          - {type: Regular, bins: 50, range_ref: puppi_range, name: puppiWeight, label: "puppiWeight"}
-          - {type: Variable, name: pt, edges_ref: pt_edges, label: "pT"}
+          - {type: Regular, bins: 50, range_ref: nnvtx_range, label: "nnVtxScore"}
 
   puppi:
-    objects: [puppi, matched_puppi]
+    objects: [puppi]
     plots:
       puppiWeight:
         variables: [puppiWeight]
         axes:
           - {type: Regular, bins: 50, range_ref: puppi_range, label: "puppiWeight"}
 
-      dxy:
-        variables: [dxy]
+      nnVtxScore:
+        variables: [nnVtxScore]
         axes:
-          - {type: Regular, bins: 500, range_ref: dxy_range, label: "dxy"}
+          - {type: Regular, bins: 50, range_ref: nnvtx_range, label: "nnVtxScore"}
 
-      z0:
-        variables: [z0]
+  # ------------------------------------------------------------
+  # Cone study blocks (PF neutral / PF charged / PUPPI neutral / PUPPI charged)
+  # We include:
+  #  - n_gen_all/chg/neu in cone for dr01, dr02, dr03
+  #  - ratio_a/b/c for dr01, dr02, dr03
+  #  - ratio_* vs pt_zoom (2D)
+  #  - ratio_* vs puppiWeight (2D)
+  #  - ratio_* vs nnVtxScore (2D)  [requested; PUPPI especially]
+  # ------------------------------------------------------------
+
+  cone_pf_neu:
+    objects: [pf_neu, matched_pf_neu, nonMatched_pf_neu]
+    plots:
+      n_gen_all_inCone_dr01:
+        variables: [n_gen_all_inCone_dr01]
         axes:
-          - {type: Regular, bins: 100, range_ref: z0_range, label: "z0"}
+          - {type: Regular, bins: 10, range_ref: cone_mult_range, label: "N(gen) in cone (dr=0.1)"}
 
-      hwTkQuality:
-        variables: [hwTkQuality]
+      n_gen_chg_inCone_dr01:
+        variables: [n_gen_chg_inCone_dr01]
         axes:
-          - {type: Regular, bins: 21, range: [0, 20], label: "hwTkQuality"}
+          - {type: Regular, bins: 10, range_ref: cone_mult_range, label: "N(gen chg) in cone (dr=0.1)"}
 
-special:
-  matched_pf_resolution:
-    object: matched_pf
-    variables: [resolution]
-    axes:
-      - {type: Regular, bins: 50, range: [0, 3], label: "pT(reco)/pT(gen)"}
+      n_gen_neu_inCone_dr01:
+        variables: [n_gen_neu_inCone_dr01]
+        axes:
+          - {type: Regular, bins: 10, range_ref: cone_mult_range, label: "N(gen neu) in cone (dr=0.1)"}
 
-  matched_puppi_resolution:
-    object: matched_puppi
-    variables: [resolution]
-    axes:
-      - {type: Regular, bins: 50, range: [0, 3], label: "pT(reco)/pT(gen)"}
+      n_gen_all_inCone_dr02:
+        variables: [n_gen_all_inCone_dr02]
+        axes:
+          - {type: Regular, bins: 10, range_ref: cone_mult_range, label: "N(gen) in cone (dr=0.2)"}
 
-  pf_isMatched:
-    object: pf
-    variables: [isMatched]
-    axes:
-      - {type: Regular, bins: 50, range: [0, 1.1], label: "isMatched"}
+      n_gen_chg_inCone_dr02:
+        variables: [n_gen_chg_inCone_dr02]
+        axes:
+          - {type: Regular, bins: 10, range_ref: cone_mult_range, label: "N(gen chg) in cone (dr=0.2)"}
 
-  puppi_isMatched:
-    object: puppi
-    variables: [isMatched]
-    axes:
-      - {type: Regular, bins: 50, range: [0, 1.1], label: "isMatched"}
+      n_gen_neu_inCone_dr02:
+        variables: [n_gen_neu_inCone_dr02]
+        axes:
+          - {type: Regular, bins: 10, range_ref: cone_mult_range, label: "N(gen neu) in cone (dr=0.2)"}
 
-  gen_isReconstructed:
-    object: gen
-    variables: [isReconstructed]
-    axes:
-      - {type: Regular, bins: 50, range: [0, 1.1], label: "isReconstructed"}
+      n_gen_all_inCone_dr03:
+        variables: [n_gen_all_inCone_dr03]
+        axes:
+          - {type: Regular, bins: 10, range_ref: cone_mult_range, label: "N(gen) in cone (dr=0.3)"}
+
+      n_gen_chg_inCone_dr03:
+        variables: [n_gen_chg_inCone_dr03]
+        axes:
+          - {type: Regular, bins: 10, range_ref: cone_mult_range, label: "N(gen chg) in cone (dr=0.3)"}
+
+      n_gen_neu_inCone_dr03:
+        variables: [n_gen_neu_inCone_dr03]
+        axes:
+          - {type: Regular, bins: 10, range_ref: cone_mult_range, label: "N(gen neu) in cone (dr=0.3)"}
+
+      ratio_a_dr01:
+        variables: [ratio_a_dr01]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, label: "ratio_a (dr=0.1)"}
+
+      ratio_b_dr01:
+        variables: [ratio_b_dr01]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, label: "ratio_b (dr=0.1)"}
+
+      ratio_c_dr01:
+        variables: [ratio_c_dr01]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, label: "ratio_c (dr=0.1)"}
+
+      ratio_a_dr02:
+        variables: [ratio_a_dr02]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, label: "ratio_a (dr=0.2)"}
+
+      ratio_b_dr02:
+        variables: [ratio_b_dr02]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, label: "ratio_b (dr=0.2)"}
+
+      ratio_c_dr02:
+        variables: [ratio_c_dr02]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, label: "ratio_c (dr=0.2)"}
+
+      ratio_a_dr03:
+        variables: [ratio_a_dr03]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, label: "ratio_a (dr=0.3)"}
+
+      ratio_b_dr03:
+        variables: [ratio_b_dr03]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, label: "ratio_b (dr=0.3)"}
+
+      ratio_c_dr03:
+        variables: [ratio_c_dr03]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, label: "ratio_c (dr=0.3)"}
+
+      # ---- ratio vs pt (zoom) ----
+      ratio_a_dr01_vs_pt:
+        variables: [ratio_a_dr01, pt]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, name: ratio_a_dr01, label: "ratio_a (dr=0.1)"}
+          - {type: Variable, name: pt, edges_ref: pt_zoom_edges, label: "pT (center neutral)"}
+
+      ratio_b_dr01_vs_pt:
+        variables: [ratio_b_dr01, pt]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, name: ratio_b_dr01, label: "ratio_b (dr=0.1)"}
+          - {type: Variable, name: pt, edges_ref: pt_zoom_edges, label: "pT (center neutral)"}
+
+      ratio_c_dr01_vs_pt:
+        variables: [ratio_c_dr01, pt]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, name: ratio_c_dr01, label: "ratio_c (dr=0.1)"}
+          - {type: Variable, name: pt, edges_ref: pt_zoom_edges, label: "pT (center neutral)"}
+
+      ratio_a_dr02_vs_pt:
+        variables: [ratio_a_dr02, pt]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, name: ratio_a_dr02, label: "ratio_a (dr=0.2)"}
+          - {type: Variable, name: pt, edges_ref: pt_zoom_edges, label: "pT (center neutral)"}
+
+      ratio_b_dr02_vs_pt:
+        variables: [ratio_b_dr02, pt]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, name: ratio_b_dr02, label: "ratio_b (dr=0.2)"}
+          - {type: Variable, name: pt, edges_ref: pt_zoom_edges, label: "pT (center neutral)"}
+
+      ratio_c_dr02_vs_pt:
+        variables: [ratio_c_dr02, pt]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, name: ratio_c_dr02, label: "ratio_c (dr=0.2)"}
+          - {type: Variable, name: pt, edges_ref: pt_zoom_edges, label: "pT (center neutral)"}
+
+      ratio_a_dr03_vs_pt:
+        variables: [ratio_a_dr03, pt]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, name: ratio_a_dr03, label: "ratio_a (dr=0.3)"}
+          - {type: Variable, name: pt, edges_ref: pt_zoom_edges, label: "pT (center neutral)"}
+
+      ratio_b_dr03_vs_pt:
+        variables: [ratio_b_dr03, pt]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, name: ratio_b_dr03, label: "ratio_b (dr=0.3)"}
+          - {type: Variable, name: pt, edges_ref: pt_zoom_edges, label: "pT (center neutral)"}
+
+      ratio_c_dr03_vs_pt:
+        variables: [ratio_c_dr03, pt]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, name: ratio_c_dr03, label: "ratio_c (dr=0.3)"}
+          - {type: Variable, name: pt, edges_ref: pt_zoom_edges, label: "pT (center neutral)"}
+
+      # ---- ratio vs puppiWeight ----
+      ratio_a_dr01_vs_puppiWeight:
+        variables: [ratio_a_dr01, puppiWeight]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, name: ratio_a_dr01, label: "ratio_a (dr=0.1)"}
+          - {type: Regular, bins: 50, range_ref: puppi_range, name: puppiWeight, label: "puppiWeight"}
+
+      ratio_b_dr01_vs_puppiWeight:
+        variables: [ratio_b_dr01, puppiWeight]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, name: ratio_b_dr01, label: "ratio_b (dr=0.1)"}
+          - {type: Regular, bins: 50, range_ref: puppi_range, name: puppiWeight, label: "puppiWeight"}
+
+      ratio_c_dr01_vs_puppiWeight:
+        variables: [ratio_c_dr01, puppiWeight]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, name: ratio_c_dr01, label: "ratio_c (dr=0.1)"}
+          - {type: Regular, bins: 50, range_ref: puppi_range, name: puppiWeight, label: "puppiWeight"}
+
+      ratio_a_dr02_vs_puppiWeight:
+        variables: [ratio_a_dr02, puppiWeight]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, name: ratio_a_dr02, label: "ratio_a (dr=0.2)"}
+          - {type: Regular, bins: 50, range_ref: puppi_range, name: puppiWeight, label: "puppiWeight"}
+
+      ratio_b_dr02_vs_puppiWeight:
+        variables: [ratio_b_dr02, puppiWeight]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, name: ratio_b_dr02, label: "ratio_b (dr=0.2)"}
+          - {type: Regular, bins: 50, range_ref: puppi_range, name: puppiWeight, label: "puppiWeight"}
+
+      ratio_c_dr02_vs_puppiWeight:
+        variables: [ratio_c_dr02, puppiWeight]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, name: ratio_c_dr02, label: "ratio_c (dr=0.2)"}
+          - {type: Regular, bins: 50, range_ref: puppi_range, name: puppiWeight, label: "puppiWeight"}
+
+      ratio_a_dr03_vs_puppiWeight:
+        variables: [ratio_a_dr03, puppiWeight]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, name: ratio_a_dr03, label: "ratio_a (dr=0.3)"}
+          - {type: Regular, bins: 50, range_ref: puppi_range, name: puppiWeight, label: "puppiWeight"}
+
+      ratio_b_dr03_vs_puppiWeight:
+        variables: [ratio_b_dr03, puppiWeight]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, name: ratio_b_dr03, label: "ratio_b (dr=0.3)"}
+          - {type: Regular, bins: 50, range_ref: puppi_range, name: puppiWeight, label: "puppiWeight"}
+
+      ratio_c_dr03_vs_puppiWeight:
+        variables: [ratio_c_dr03, puppiWeight]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, name: ratio_c_dr03, label: "ratio_c (dr=0.3)"}
+          - {type: Regular, bins: 50, range_ref: puppi_range, name: puppiWeight, label: "puppiWeight"}
+
+      # ---- ratio vs nnVtxScore ----
+      ratio_a_dr01_vs_nnVtxScore:
+        variables: [ratio_a_dr01, nnVtxScore]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, name: ratio_a_dr01, label: "ratio_a (dr=0.1)"}
+          - {type: Regular, bins: 50, range_ref: nnvtx_range, name: nnVtxScore, label: "nnVtxScore"}
+
+      ratio_b_dr01_vs_nnVtxScore:
+        variables: [ratio_b_dr01, nnVtxScore]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, name: ratio_b_dr01, label: "ratio_b (dr=0.1)"}
+          - {type: Regular, bins: 50, range_ref: nnvtx_range, name: nnVtxScore, label: "nnVtxScore"}
+
+      ratio_c_dr01_vs_nnVtxScore:
+        variables: [ratio_c_dr01, nnVtxScore]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, name: ratio_c_dr01, label: "ratio_c (dr=0.1)"}
+          - {type: Regular, bins: 50, range_ref: nnvtx_range, name: nnVtxScore, label: "nnVtxScore"}
+
+  # ------------------------------------------------------------
+  # PF charged block: same cone vars as neutral, but still valid
+  # (these candidates do NOT get cone variables in your current code)
+  # So: only basic QA plots here.
+  # ------------------------------------------------------------
+  cone_pf_chg:
+    objects: [pf_chg, matched_pf_chg, nonMatched_pf_chg]
+    plots:
+      pt:
+        variables: [pt]
+        logy: true
+        axes:
+          - {type: Variable, name: pt, edges_ref: pt_edges, label: "pT"}
+
+      puppiWeight:
+        variables: [puppiWeight]
+        axes:
+          - {type: Regular, bins: 50, range_ref: puppi_range, label: "puppiWeight"}
+
+  # ------------------------------------------------------------
+  # PUPPI neutral: same as PF neutral block
+  # ------------------------------------------------------------
+  cone_puppi_neu:
+    objects: [puppi_neu, matched_puppi_neu, nonMatched_puppi_neu]
+    plots:
+      n_gen_all_inCone_dr01:
+        variables: [n_gen_all_inCone_dr01]
+        axes:
+          - {type: Regular, bins: 10, range_ref: cone_mult_range, label: "N(gen) in cone (dr=0.1)"}
+
+      n_gen_chg_inCone_dr01:
+        variables: [n_gen_chg_inCone_dr01]
+        axes:
+          - {type: Regular, bins: 10, range_ref: cone_mult_range, label: "N(gen chg) in cone (dr=0.1)"}
+
+      n_gen_neu_inCone_dr01:
+        variables: [n_gen_neu_inCone_dr01]
+        axes:
+          - {type: Regular, bins: 10, range_ref: cone_mult_range, label: "N(gen neu) in cone (dr=0.1)"}
+
+      n_gen_all_inCone_dr02:
+        variables: [n_gen_all_inCone_dr02]
+        axes:
+          - {type: Regular, bins: 10, range_ref: cone_mult_range, label: "N(gen) in cone (dr=0.2)"}
+
+      n_gen_chg_inCone_dr02:
+        variables: [n_gen_chg_inCone_dr02]
+        axes:
+          - {type: Regular, bins: 10, range_ref: cone_mult_range, label: "N(gen chg) in cone (dr=0.2)"}
+
+      n_gen_neu_inCone_dr02:
+        variables: [n_gen_neu_inCone_dr02]
+        axes:
+          - {type: Regular, bins: 10, range_ref: cone_mult_range, label: "N(gen neu) in cone (dr=0.2)"}
+
+      n_gen_all_inCone_dr03:
+        variables: [n_gen_all_inCone_dr03]
+        axes:
+          - {type: Regular, bins: 10, range_ref: cone_mult_range, label: "N(gen) in cone (dr=0.3)"}
+
+      n_gen_chg_inCone_dr03:
+        variables: [n_gen_chg_inCone_dr03]
+        axes:
+          - {type: Regular, bins: 10, range_ref: cone_mult_range, label: "N(gen chg) in cone (dr=0.3)"}
+
+      n_gen_neu_inCone_dr03:
+        variables: [n_gen_neu_inCone_dr03]
+        axes:
+          - {type: Regular, bins: 10, range_ref: cone_mult_range, label: "N(gen neu) in cone (dr=0.3)"}
+
+      ratio_a_dr01:
+        variables: [ratio_a_dr01]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, label: "ratio_a (dr=0.1)"}
+
+      ratio_b_dr01:
+        variables: [ratio_b_dr01]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, label: "ratio_b (dr=0.1)"}
+
+      ratio_c_dr01:
+        variables: [ratio_c_dr01]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, label: "ratio_c (dr=0.1)"}
+
+      ratio_a_dr02:
+        variables: [ratio_a_dr02]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, label: "ratio_a (dr=0.2)"}
+
+      ratio_b_dr02:
+        variables: [ratio_b_dr02]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, label: "ratio_b (dr=0.2)"}
+
+      ratio_c_dr02:
+        variables: [ratio_c_dr02]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, label: "ratio_c (dr=0.2)"}
+
+      ratio_a_dr03:
+        variables: [ratio_a_dr03]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, label: "ratio_a (dr=0.3)"}
+
+      ratio_b_dr03:
+        variables: [ratio_b_dr03]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, label: "ratio_b (dr=0.3)"}
+
+      ratio_c_dr03:
+        variables: [ratio_c_dr03]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, label: "ratio_c (dr=0.3)"}
+
+      # ratio vs pt
+      ratio_c_dr03_vs_pt:
+        variables: [ratio_c_dr03, pt]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, name: ratio_c_dr03, label: "ratio_c (dr=0.3)"}
+          - {type: Variable, name: pt, edges_ref: pt_zoom_edges, label: "pT (center neutral)"}
+
+      # ratio vs puppiWeight
+      ratio_c_dr03_vs_puppiWeight:
+        variables: [ratio_c_dr03, puppiWeight]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, name: ratio_c_dr03, label: "ratio_c (dr=0.3)"}
+          - {type: Regular, bins: 50, range_ref: puppi_range, name: puppiWeight, label: "puppiWeight"}
+
+      # ratio vs nnVtxScore
+      ratio_c_dr03_vs_nnVtxScore:
+        variables: [ratio_c_dr03, nnVtxScore]
+        axes:
+          - {type: Regular, bins: 60, range_ref: ratio_range, name: ratio_c_dr03, label: "ratio_c (dr=0.3)"}
+          - {type: Regular, bins: 50, range_ref: nnvtx_range, name: nnVtxScore, label: "nnVtxScore"}
+
+  # ------------------------------------------------------------
+  # PUPPI charged QA
+  # ------------------------------------------------------------
+  cone_puppi_chg:
+    objects: [puppi_chg, matched_puppi_chg, nonMatched_puppi_chg]
+    plots:
+      pt:
+        variables: [pt]
+        logy: true
+        axes:
+          - {type: Variable, name: pt, edges_ref: pt_edges, label: "pT"}
+
+      puppiWeight:
+        variables: [puppiWeight]
+        axes:
+          - {type: Regular, bins: 50, range_ref: puppi_range, label: "puppiWeight"}
+
+      nnVtxScore:
+        variables: [nnVtxScore]
+        axes:
+          - {type: Regular, bins: 50, range_ref: nnvtx_range, label: "nnVtxScore"}
