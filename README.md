@@ -76,21 +76,44 @@ Preliminary training on GNN (EdgeConv, GravNet) can be found in the `Training` r
 2. Prepare dataset
     ```
     # Example
-    python3 prepare_dataset_batches.py --input perfNano_TTbar_PU200.root --output_dir ./graphs --graphs_per_file 20000
+    python3 prepare_dataset_batches.py --input perfNano_TTbar_PU200.root --output_dir ./graphs_dr0p3 --graphs_per_file 50000
+
+    # Example for dR < 0.2 dataset
+    python3 prepare_dataset_batches.py --input perfNano_TTbar_PU200.root --dr 0.2 --output_dir ./graphs_dr0p2 --graphs_per_file 50000
+
     ```
     - To add more inputs, change this script (once the branches are available on the ntuples)
+    - Likewise, you can turn off some inputs from the script
     - Some pre-processed inputs (1000 neutral cones per pt file) can be found here: `/eos/cms/store/group/cmst3/group/l1tr/kypark/puppi_training_neutral_dr0p3/`
+
+    2.1 Dataset validation     
+    ```bash                           
+    # Example                         
+    python3 validate_dataset.py \
+      --input "/eos/cms/store/group/cmst3/group/l1tr/elfontan/PUPPIML/DEEPSets/graphs-dR0p3_removingRequirementAtLeast1PF/graphs_*pt" \
+      --output_dir /eos/user/e/elfontan/www/PHASE2L1_Correlator/ML_NeutralRegression/DATASET-Validation-AllData-dR0p3/ \                 
+      --n_examples 20                         
+    ```      
 
 3. Run training
     ```
-    # Example
+    # DeepSet (baseline for now)
+    python train_deepset.py \
+      --data "./graphs/*.pt" \
+      --epochs 30 \
+      --output_activation softplus \
+      --loss_type weighted_huber \
+      --penalty_alpha 1 \
+      --feature_importance
+
+    # Example (for GNN)
     python3 train_gravnet.py --data "./graphs/*.pt" --epochs 20 --batch_size 128
 
     ```
 
-    It will run the training and save at every epoch the training output & model at `runs/runs/run_*_*` directory. 
+    It will run the training and save at every epoch the training output & model at `runs/run_*_*` directory. 
 
-4. Check training: plot loss history, regression vs. target
+4. Check training: plot loss history, regression vs. target, residual plots, etc
     ```
-    python3 plot_eval.py --run runs/runs/run_*_* 
+    python3 plot_eval.py --run runs/run_*_* 
     ```
